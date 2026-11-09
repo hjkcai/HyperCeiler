@@ -96,7 +96,7 @@ class HomeDockWindow : BaseHook() {
          * state is ever wrong, this is also how long the Dock can stay wrong, and 2026-09-14 showed
          * a mis-evaluated overlay flag can hold the Dock hidden until the next traversal.
          */
-        const val SWEEP_BACKOFF_MAX_MS = 8_000L
+        const val SWEEP_BACKOFF_MAX_MS = 30_000L
         /**
          * Sweep interval while the panel is asleep (non-interactive).
          *
@@ -377,6 +377,16 @@ class HomeDockWindow : BaseHook() {
     @Volatile private var sweepIntervalMs = NATIVE_BIND_SWEEP_MS
 
     /**
+     * 是否有理由去 provider 重读几何。
+     *
+     * <p>sweep 本身还要维持 native motion 绑定与旋转门，那些是进程内的廉价操作；但
+     * [DockGlassClient.refreshGeometry] 是一次跨进程 query，会唤醒模块主进程。几何值只在
+     * 用户改设置时变化，那一路由 SharedPreferences 监听器把该标记置位，所以空闲的 sweep
+     * 不必再自己去问一次。
+     */
+    @Volatile private var geometryDirty = true
+
+    /**
      * Return the sweep to its fast cadence.
      *
      * <p>Called from every path that means "something about the launcher may have changed": a
@@ -450,6 +460,8 @@ class HomeDockWindow : BaseHook() {
                 // longer what makes a value visible: the sweep and every traversal read the
                 // preferences themselves. Refresh first so the requested traversal cannot see the
                 // previous value, and never fail the hook closed over a read.
+                // 设置确实变了：标记几何需要重读，sweep 下一拍才会去问 provider。
+                geometryDirty = true
                 resetSweepCadence()
                 refreshSettings()
                 requestTraversal()
@@ -471,6 +483,12 @@ class HomeDockWindow : BaseHook() {
             }
         }
         WindowHooks(loadClass("com.android.server.wm.WindowState")).install()
+        // 预热最近任务的触感快照：provider 读取会唤醒模块主进程，放在这里而不是首次
+        // 滑动时的 Binder 事务里。否则第一次从最近任务滑卡片会没有震动。
+        runCatching {
+            com.sevtinge.hyperceiler.libhook.rules.home.recent.HomeRecentsHapticEndpointOS4
+                .prime(service?.getObjectFieldAs<android.content.Context>("mContext"))
+        }.onFailure { glassClient.record("haptic prime failed=${it.javaClass.simpleName}") }
         installRotationHook()
         installUnlockReveal()
         XposedLog.i(TAG, LOG_TAG, "WMS dock hook ready: enabled=${settings.enabled}, blur=${settings.blur}")
@@ -2120,15 +2138,16 @@ class HomeDockWindow : BaseHook() {
                     return@runCatching
                 }
                 val changed = refreshSettings()
-                // The provider read is what actually advances the geometry: the values
-                // refreshSettings() reads through PrefsBridge can be frozen for the whole
-                // process lifetime. It is posted, so its result lands on the next sweep - the
-                // cadence is the knob's own latency, not this tick's.
+                // 几何查询是一次跨进程 provider 读，会唤醒模块主进程。几何只在用户改设置时
+                // 变化，那条路径由 SharedPreferences 监听器把 geometryDirty 置位，所以空闲
+                // 的 sweep 不再自己去问一次。
                 //
-                // This is the backstop, not the fast path: the geometry observers ask for the
-                // same read the moment the settings file changes. This tick is what covers a
-                // build whose provider notification never arrives.
-                glassClient.refreshGeometry()
+                // refreshGeometry 内部有失败重试与「dirty 才查」的门控；这里只负责在设置
+                // 变更后把请求递进去一次，不假设这次一定会成功。
+                if (geometryDirty) {
+                    geometryDirty = false
+                    glassClient.refreshGeometry(force = true)
+                }
                 // The rotation gate has to be polled here: a rotated app hides the launcher window,
                 // WMS stops traversing it, and nothing else observes the display while that lasts.
                 val rotationChanged = layerUpdate.refreshRotationGate()

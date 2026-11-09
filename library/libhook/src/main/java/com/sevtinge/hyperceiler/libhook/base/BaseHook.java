@@ -32,6 +32,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.sevtinge.hyperceiler.common.log.XposedLog;
+import com.sevtinge.hyperceiler.libhook.BuildConfig;
 import com.sevtinge.hyperceiler.libhook.utils.hookapi.dexkit.DexKit;
 import com.sevtinge.hyperceiler.libhook.utils.hookapi.dexkit.IDexKit;
 import com.sevtinge.hyperceiler.libhook.utils.hookapi.dexkit.IDexKitList;
@@ -74,7 +75,7 @@ import io.github.lingqiqi5211.ezhooktool.xposed.java.IReplaceHook;
  * @author HyperCeiler
  */
 public abstract class BaseHook {
-    public static String ACTION_PREFIX = "com.sevtinge.hyperceiler.module.action.";
+    public static String ACTION_PREFIX = BuildConfig.APP_MODULE_ID + ".module.action.";
     public final String TAG = getClass().getSimpleName();
     private volatile boolean mInDexKitInit = false;
 

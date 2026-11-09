@@ -16,6 +16,10 @@ local.properties
 signing.properties
 *.keystore
 *.jks
+# tools/fetch_github_packages.py 的下载产物，构建时生成，不入库。
+/localrepo/
+# 从官方 APK 提取的 native 库，供无法运行 NDK 的 aarch64 主机构建使用。
+/app/src/prebuiltNative/
 /.kotlin
 /library/hook
 *.apk
@@ -38,3 +42,7 @@ reports/
 
 # Local proprietary launcher firmware fixtures extracted from a supplied APK.
 /firmware/
+
+# 逆向分析输入：从真机拉取的厂商 APK 与从中解出的 so。体积大、含第三方代码，
+# 且属于可再生成的输入，不入库。复现方式见 docs/BUILD_IN_DOCKER.md。
+/decomp/

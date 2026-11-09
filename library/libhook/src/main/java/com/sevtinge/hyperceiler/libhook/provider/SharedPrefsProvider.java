@@ -36,6 +36,7 @@ import com.sevtinge.hyperceiler.common.log.ModuleLog;
 import androidx.annotation.NonNull;
 
 import com.sevtinge.hyperceiler.common.utils.PrefsBridge;
+import com.sevtinge.hyperceiler.libhook.BuildConfig;
 import com.sevtinge.hyperceiler.libhook.utils.hookapi.tool.AppsTool;
 
 import java.io.File;
@@ -46,7 +47,7 @@ import java.util.Set;
 
 public class SharedPrefsProvider extends ContentProvider {
 
-    public static final String AUTHORITY = "com.sevtinge.hyperceiler.provider.sharedprefs";
+    public static final String AUTHORITY = BuildConfig.APP_MODULE_ID + ".provider.sharedprefs";
     private static final UriMatcher uriMatcher = new UriMatcher(UriMatcher.NO_MATCH);
 
     /** Dock geometry snapshot kinds, see {@link #DOCK_GEOMETRY_KEYS}. */
@@ -84,9 +85,9 @@ public class SharedPrefsProvider extends ContentProvider {
      * Off unless `debug.hyperceiler.prefs_write` is 1, and restricted to the shell/root caller, so a
      * normal application can never write another app's preferences through it.
      *
-     * Usage from adb:
+     * Usage from adb (authority 随 applicationId 变化，见 gradle.properties 的 hyperceilerAppId):
      *   adb shell setprop debug.hyperceiler.prefs_write 1
-     *   adb shell content call --uri content://com.sevtinge.hyperceiler.provider.sharedprefs \
+     *   adb shell content call --uri content://<applicationId>.provider.sharedprefs \
      *       --method hc_debug_put --arg boolean:home_layout_workspace_padding_top_enable:true
      */
     private Bundle debugPut(String arg) {

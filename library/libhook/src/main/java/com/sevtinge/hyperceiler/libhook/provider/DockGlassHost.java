@@ -906,7 +906,7 @@ final class DockGlassHost {
             Object original = field.get(root);
             if (!(original instanceof String)) return false;
             String ownPackage = view.getContext().getPackageName();
-            if (!"com.sevtinge.hyperceiler".equals(ownPackage)
+            if (!com.sevtinge.hyperceiler.libhook.BuildConfig.APP_MODULE_ID.equals(ownPackage)
                 && !"com.android.systemui".equals(ownPackage)) return false;
             // Instance field of OUR windowless ViewRoot only. Never alter static flags,
             // global settings, system properties, or another window's package/filter.

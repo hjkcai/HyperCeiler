@@ -50,10 +50,21 @@ public final class HomeLayoutNativeEndpointOS4 {
      * pulls those values into a cache so that the launcher's synchronous transaction never waits
      * on a binder call. A refresh can start the module app, so idle refreshes must be sparse.
      */
-    private static final String PREFS_AUTHORITY = "com.sevtinge.hyperceiler.provider.sharedprefs";
+    private static final String PREFS_AUTHORITY = com.sevtinge.hyperceiler.libhook.provider.SharedPrefsProvider.AUTHORITY;
     // HCS1 authorization expires after five BOOTTIME seconds, even without a settings write.
     // Renew on the existing worker; notifications still coalesce slider updates promptly.
     private static final long PREFS_REFRESH_MS = 1500;
+    /**
+     * 成功读取之后的最长空闲等待。
+     *
+     * 之前这里是 {@link #PREFS_REFRESH_MS}：每 1.5 秒跨进程查一次 provider，只为了刷新一份
+     * 「只会在用户改设置时才变」的快照。代价是模块主进程反复被唤醒：一次 query 就能把它从
+     * 系统回收中冷启动，跑完查询再被收走，于是 CPU 一直有周期性尖峰。
+     *
+     * 现在改为通知驱动：设置页写入会走 PrefsBridge 的 notifyChange，观察者随即唤醒本线程。
+     * 这里的值只是一个兜底上限，用来覆盖「通知丢失」这种罕见情况，1 小时一次足够。
+     */
+    private static final long IDLE_WAIT_MS = 3_600_000;
     private static final long INITIAL_RETRY_MS = 1500;
     private static final long CHANGE_MIN_INTERVAL_NS = 150_000_000L;
     /**
@@ -294,7 +305,10 @@ public final class HomeLayoutNativeEndpointOS4 {
                         final long period;
                         if (success) {
                             retry = INITIAL_RETRY_MS;
-                            period = PREFS_REFRESH_MS;
+                            // 成功后不再定时重读。设置值只在用户改设置时变化，那一路由
+                            // notifyChange 观察者唤醒；空闲时每次重读都是一次跨进程 query，
+                            // 而模块主进程早已被系统回收，这一下就是一次冷启动。
+                            period = IDLE_WAIT_MS;
                         } else {
                             retry = Math.min(retry * 2, MAX_REFRESH_BACKOFF_MS);
                             period = retry;

@@ -18,6 +18,7 @@
  */
 package com.sevtinge.hyperceiler.libhook.rules.aod
 
+import com.sevtinge.hyperceiler.common.utils.api.ProjectApi
 import com.sevtinge.hyperceiler.libhook.base.BaseHook
 import io.github.lingqiqi5211.ezhooktool.core.findMethod
 import io.github.lingqiqi5211.ezhooktool.core.loadClass
@@ -40,7 +41,7 @@ object UnlockShortCuts : BaseHook() {
                     }
                 }
 
-                list.add("com.sevtinge.hyperceiler-HYPERCEILER")
+                list.add(ProjectApi.mAppModulePkg + "-HYPERCEILER")
                 it.result = list
             }
     }

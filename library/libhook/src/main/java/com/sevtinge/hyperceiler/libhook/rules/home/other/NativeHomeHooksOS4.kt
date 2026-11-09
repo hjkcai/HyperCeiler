@@ -25,6 +25,7 @@ import android.os.SystemClock
 import com.sevtinge.hyperceiler.common.log.ModuleLog as Log
 import androidx.annotation.Keep
 import com.sevtinge.hyperceiler.common.utils.PrefsBridge
+import com.sevtinge.hyperceiler.libhook.provider.SharedPrefsProvider
 import com.sevtinge.hyperceiler.libhook.safecrash.CrashScope
 import com.sevtinge.hyperceiler.libhook.utils.api.ContextUtils
 import java.util.concurrent.atomic.AtomicBoolean
@@ -93,7 +94,7 @@ object NativeHomeHooksOS4 {
     private const val DOCK_ENABLED_KEY = "home_dock_bg_custom_enable"
     private const val DOCK_ENABLED_STORAGE_KEY = "prefs_key_$DOCK_ENABLED_KEY"
     private const val LIBRARY_FILE = "libHyperCeilerNative.so"
-    private const val PACKAGE = "com.sevtinge.hyperceiler"
+    private val PACKAGE = com.sevtinge.hyperceiler.libhook.BuildConfig.APP_MODULE_ID
     private const val LAUNCHER_PACKAGE = "com.miui.home"
 
     private val loadGate = Any()
@@ -115,7 +116,7 @@ object NativeHomeHooksOS4 {
     @Volatile private var libraryLoaded = false
     private val preferencesRecoveryPending = AtomicBoolean()
     private val preferencesRecoveryRunning = AtomicBoolean()
-    private val diagnosticsUri = Uri.parse("content://com.sevtinge.hyperceiler.provider.sharedprefs")
+    private val diagnosticsUri = Uri.parse("content://" + SharedPrefsProvider.AUTHORITY)
     // SharedPreferences may hold listeners weakly. Keep the listener alive with this process.
     private val dockEnabledListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         // PrefsBridge wraps its read/write keys, but raw preference callbacks use the stored key.

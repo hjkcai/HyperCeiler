@@ -28,6 +28,7 @@ import android.content.res.Configuration
 import android.os.Bundle
 import android.provider.Settings
 import com.sevtinge.hyperceiler.common.log.XposedLog
+import com.sevtinge.hyperceiler.libhook.provider.SharedPrefsProvider
 import com.sevtinge.hyperceiler.common.utils.PrefsBridge
 import com.sevtinge.hyperceiler.libhook.base.BaseHook
 import io.github.lingqiqi5211.ezhooktool.core.findMethod
@@ -47,16 +48,16 @@ object HomeSettingsOS4 : BaseHook() {
     }
 
     private val titleSizeUri = Uri.parse(
-        "content://com.sevtinge.hyperceiler.provider.sharedprefs/integer/prefs_key_home_title_font_size/12"
+        "content://" + SharedPrefsProvider.AUTHORITY + "/integer/prefs_key_home_title_font_size/12"
     )
     private val titleColorUri = Uri.parse(
-        "content://com.sevtinge.hyperceiler.provider.sharedprefs/integer/prefs_key_home_title_title_color/-1"
+        "content://" + SharedPrefsProvider.AUTHORITY + "/integer/prefs_key_home_title_title_color/-1"
     )
     private val drawerTitleSizeUri = Uri.parse(
-        "content://com.sevtinge.hyperceiler.provider.sharedprefs/integer/prefs_key_home_drawer_title_font_size/12"
+        "content://" + SharedPrefsProvider.AUTHORITY + "/integer/prefs_key_home_drawer_title_font_size/12"
     )
     private val titleChangesUri = Uri.parse(
-        "content://com.sevtinge.hyperceiler.provider.sharedprefs/pref"
+        "content://" + SharedPrefsProvider.AUTHORITY + "/pref"
     )
     private var titleObserver: ContentObserver? = null
 

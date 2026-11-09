@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** Filter the live Shell AIDL reply, not an OEM-named controller or the system task store. */
 public final class HomeHideRecentCardsOS4 extends BaseHook {
     private static final String TAG = "HyperCeiler.RecentsCards";
-    private static final Uri ROOT = Uri.parse("content://com.sevtinge.hyperceiler.provider.sharedprefs");
+    private static final Uri ROOT = Uri.parse("content://" + com.sevtinge.hyperceiler.libhook.provider.SharedPrefsProvider.AUTHORITY);
     private record Selection(Set<String> packages, int launcherAppId) {
         Selection { packages = Set.copyOf(packages); }
         boolean owns(int uid) { return uid >= 10000 && launcherAppId >= 10000 && uid % 100000 == launcherAppId; }

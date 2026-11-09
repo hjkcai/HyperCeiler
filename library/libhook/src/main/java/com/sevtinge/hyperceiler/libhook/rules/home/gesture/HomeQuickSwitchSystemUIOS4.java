@@ -32,7 +32,7 @@ import java.util.WeakHashMap;
 /** Coexists at the platform receiver and Shell cleanup boundary, not another module's hook entry. */
 public final class HomeQuickSwitchSystemUIOS4 extends BaseHook {
     private static final String TAG_LOG="HyperCeiler.QuickSystemUI";
-    private static final Uri ROOT=Uri.parse("content://com.sevtinge.hyperceiler.provider.sharedprefs");
+    private static final Uri ROOT=Uri.parse("content://" + com.sevtinge.hyperceiler.libhook.provider.SharedPrefsProvider.AUTHORITY + "");
     private final Object guard=new Object();
     private final Map<Object,HomeQuickSwitchState> receivers=new WeakHashMap<>();
     private final Map<Object,HomeQuickSwitchState> trackers=new IdentityHashMap<>();
@@ -222,8 +222,10 @@ public final class HomeQuickSwitchSystemUIOS4 extends BaseHook {
     private synchronized void install(Context app) {
         if(closed||worker!=null||!"com.android.systemui".equals(app.getPackageName()))return;
         context=app;HandlerThread thread=new HandlerThread("HC-QuickSwitch");thread.start();worker=new Handler(thread.getLooper());
+        // 只监听本功能自己的快照路径。此前挂在 ROOT 上并带 descendants=true，
+        // 任何一条无关设置写入都会把这里唤醒并重新 query 一次 provider。
         ContentObserver observer=new ContentObserver(worker){@Override public void onChange(boolean self){refresh();}};
-        app.getContentResolver().registerContentObserver(ROOT,true,observer);worker.post(this::refresh);
+        app.getContentResolver().registerContentObserver(Uri.withAppendedPath(ROOT,"home_gestures"),true,observer);worker.post(this::refresh);
         registerHotReloadCleanup(()->{app.getContentResolver().unregisterContentObserver(observer);thread.quitSafely();});
     }
     private void refresh() {

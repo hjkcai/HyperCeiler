@@ -6,6 +6,7 @@ import android.net.Uri;
 import android.text.TextUtils;
 import android.view.View;
 
+import com.sevtinge.hyperceiler.BuildConfig;
 import com.sevtinge.hyperceiler.R;
 import com.sevtinge.hyperceiler.common.log.AndroidLog;
 import com.sevtinge.hyperceiler.dashboard.SubSettings;
@@ -17,9 +18,9 @@ public class BannerCallback implements View.OnClickListener {
 
     private static final String TAG = "BannerCallback";
     public static final String ACTION_OPEN_SAFE_MODE_SETTINGS =
-        "com.sevtinge.hyperceiler.action.OPEN_SAFE_MODE_SETTINGS";
+        BuildConfig.APPLICATION_ID + ".action.OPEN_SAFE_MODE_SETTINGS";
     public static final String ACTION_OPEN_FRAMEWORK_WARNING_HELP =
-        "com.sevtinge.hyperceiler.action.OPEN_FRAMEWORK_WARNING_HELP";
+        BuildConfig.APPLICATION_ID + ".action.OPEN_FRAMEWORK_WARNING_HELP";
 
     public BannerCallback() {}
 

@@ -28,7 +28,7 @@ public final class BackGestureWidthOS4 extends BaseHook {
     private volatile boolean closed;
     private Context context;
     private final AtomicLong request = new AtomicLong();
-    private static final Uri ROOT = Uri.parse("content://com.sevtinge.hyperceiler.provider.sharedprefs");
+    private static final Uri ROOT = Uri.parse("content://" + com.sevtinge.hyperceiler.libhook.provider.SharedPrefsProvider.AUTHORITY + "");
     private static final Uri WIDTH = Uri.withAppendedPath(ROOT, "integer/prefs_key_home_navigation_back_area_width/100");
     private final Handler main = new Handler(Looper.getMainLooper());
     @Override public void init() {

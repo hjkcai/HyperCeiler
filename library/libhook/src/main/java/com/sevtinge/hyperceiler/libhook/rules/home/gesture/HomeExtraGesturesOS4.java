@@ -39,7 +39,7 @@ import java.lang.reflect.Method;
 /** Default-display OS4 gestures through a private platform monitor, never a guessed vendor hook. */
 public final class HomeExtraGesturesOS4 extends BaseHook {
     private static final String TAG_LOG="HyperCeiler.ExtraGesture";
-    private static final Uri ROOT=Uri.parse("content://com.sevtinge.hyperceiler.provider.sharedprefs");
+    private static final Uri ROOT=Uri.parse("content://" + com.sevtinge.hyperceiler.libhook.provider.SharedPrefsProvider.AUTHORITY);
     private final Handler main=new Handler(Looper.getMainLooper());
     private final HomeExtraGestureState.Shake shake=new HomeExtraGestureState.Shake();
     private volatile boolean closed;
@@ -74,7 +74,8 @@ public final class HomeExtraGesturesOS4 extends BaseHook {
         context=app;
         HandlerThread thread=new HandlerThread("HC-ExtraGesture");thread.start();worker=new Handler(thread.getLooper());
         ContentObserver observer=new ContentObserver(worker){@Override public void onChange(boolean self){refresh();}};
-        app.getContentResolver().registerContentObserver(ROOT,true,observer);
+        // 只订阅 home_gestures：挂在 ROOT 上会让任何无关设置写入都触发一次 provider 查询。
+        app.getContentResolver().registerContentObserver(Uri.withAppendedPath(ROOT,"home_gestures"),true,observer);
         registerHotReloadCleanup(()->{app.getContentResolver().unregisterContentObserver(observer);thread.quitSafely();});
         main.post(()->{
             if(closed)return;
@@ -130,7 +131,9 @@ public final class HomeExtraGesturesOS4 extends BaseHook {
         }catch(Exception ignored){}
         boolean current=foreground;
         main.post(()->{if(closed)return;homeForeground=current;reconcile();});
-        worker.postDelayed(this,500);
+        // 这里只判断「桌面是否在前台」，属于进程内查询，与 provider 冷启动无关。
+        // 1 秒的粒度对进入/离开桌面的判定足够：每次输入事件本身都会走 reconcile()。
+        worker.postDelayed(this,1000);
     }};
     private final Runnable tick=new Runnable(){@Override public void run(){
         if(closed)return;

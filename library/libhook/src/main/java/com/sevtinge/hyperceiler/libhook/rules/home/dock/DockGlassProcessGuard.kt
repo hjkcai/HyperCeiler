@@ -171,6 +171,6 @@ internal class DockGlassProcessGuard {
     fun close() { closed = true; policy.clear() }
 
     private companion object {
-        const val PACKAGE_NAME = "com.sevtinge.hyperceiler"
+        val PACKAGE_NAME = com.sevtinge.hyperceiler.libhook.BuildConfig.APP_MODULE_ID
     }
 }

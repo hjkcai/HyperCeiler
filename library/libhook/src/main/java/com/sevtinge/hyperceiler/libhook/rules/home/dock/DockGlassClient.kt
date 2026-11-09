@@ -102,7 +102,9 @@ internal class DockGlassClient(private val rendererBroker: DockGlassRendererBrok
     }
     private val worker by workerDelegate
     private companion object {
-        val uri: Uri = Uri.parse("content://com.sevtinge.hyperceiler.provider.sharedprefs")
+        val uri: Uri = Uri.parse(
+            "content://" + com.sevtinge.hyperceiler.libhook.BuildConfig.APP_MODULE_ID + ".provider.sharedprefs"
+        )
 
         /** The settings key the unlock fly-in style lives under. */
         const val REVEAL_STYLE_KEY = "prefs_key_home_dock_unlock_style"

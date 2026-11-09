@@ -64,13 +64,13 @@
         android:name="${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
         tools:node="remove" />
 
-    <uses-permission android:name="hyperceiler.permission.APP_CRASH" />
+    <uses-permission android:name="${crashPermission}" />
 
-    <permission android:name="hyperceiler.permission.READ_SETTINGS" android:protectionLevel="normal" />
-    <permission android:name="hyperceiler.permission.WRITE_SETTINGS" android:protectionLevel="signature" />
+    <permission android:name="${readSettingsPermission}" android:protectionLevel="normal" />
+    <permission android:name="${writeSettingsPermission}" android:protectionLevel="signature" />
 
-    <uses-permission android:name="hyperceiler.permission.READ_SETTINGS" />
-    <uses-permission android:name="hyperceiler.permission.WRITE_SETTINGS" />
+    <uses-permission android:name="${readSettingsPermission}" />
+    <uses-permission android:name="${writeSettingsPermission}" />
 
 
     <permission
@@ -205,7 +205,7 @@
             android:name=".home.safemode.CrashReceiver"
             android:enabled="true"
             android:exported="true"
-            android:permission="hyperceiler.permission.APP_CRASH">
+            android:permission="${crashPermission}">
             <intent-filter>
                 <action android:name="hyperceiler.intent.action.APP_CRASH" />
             </intent-filter>
@@ -213,10 +213,10 @@
 
         <provider
             android:name="fan.provider.SettingsProvider"
-            android:authorities="hyperceiler.provider.settings"
+            android:authorities="${settingsAuthority}"
             android:exported="true"
-            android:readPermission="hyperceiler.permission.READ_SETTINGS"
-            android:writePermission="hyperceiler.permission.WRITE_SETTINGS" />
+            android:readPermission="${readSettingsPermission}"
+            android:writePermission="${writeSettingsPermission}" />
     </application>
 
 </manifest>

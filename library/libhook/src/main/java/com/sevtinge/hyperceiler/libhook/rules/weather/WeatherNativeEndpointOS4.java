@@ -211,7 +211,7 @@ public final class WeatherNativeEndpointOS4 {
         if (context == null || context.getContentResolver() == null) return null;
         Object[] row = new Object[SPECS.length];
         try (Cursor cursor = context.getContentResolver().query(Uri.parse(
-                "content://com.sevtinge.hyperceiler.provider.sharedprefs/weather_config"),
+                "content://" + com.sevtinge.hyperceiler.libhook.provider.SharedPrefsProvider.AUTHORITY + "/weather_config"),
                 null, null, null, null)) {
             if (!isProviderSchema(cursor)) return null;
             for (int i = 0; i < SPECS.length; i++) {

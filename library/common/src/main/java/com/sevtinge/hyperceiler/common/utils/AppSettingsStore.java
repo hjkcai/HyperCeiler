@@ -16,7 +16,9 @@ import java.util.Map;
 public final class AppSettingsStore {
 
     private static final String TAG = "AppSettingsStore";
-    private static final Uri GLOBAL_URI = Uri.parse("content://hyperceiler.provider.settings/global");
+    private static final Uri GLOBAL_URI = Uri.parse(
+        "content://" + com.sevtinge.hyperceiler.common.utils.api.ProjectApi.mAppModulePkg + ".provider.settings/global"
+    );
     private static final String COLUMN_NAME = "name";
     private static final String COLUMN_VALUE = "value";
 

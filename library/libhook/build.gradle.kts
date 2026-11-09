@@ -16,11 +16,16 @@ android {
     namespace = "com.sevtinge.hyperceiler.libhook"
     compileSdk = 37
 
+    // 与 app 模块共用同一个 hyperceilerAppId，保证 Provider authority 两侧一致。
+    val appModuleId: String = providers.gradleProperty("hyperceilerAppId")
+        .getOrElse("com.sevtinge.hyperceiler")
+
     defaultConfig {
         minSdk = 35
         consumerProguardFiles("diagnostics-rules.pro")
 
-        buildConfigField("String", "APP_MODULE_ID", "\"com.sevtinge.hyperceiler\"")
+        buildConfigField("String", "APP_MODULE_ID", "\"$appModuleId\"")
+        manifestPlaceholders["sharedPrefsAuthority"] = "$appModuleId.provider.sharedprefs"
     }
 
     buildFeatures {

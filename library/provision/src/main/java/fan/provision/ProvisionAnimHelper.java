@@ -28,6 +28,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.RemoteException;
 import com.sevtinge.hyperceiler.common.log.ModuleLog;
+import com.sevtinge.hyperceiler.common.utils.api.ProjectApi;
 
 import com.sevtinge.hyperceiler.provision.IAnimCallback;
 import com.sevtinge.hyperceiler.provision.IProvisionAnim;
@@ -161,7 +162,7 @@ public class ProvisionAnimHelper {
         if (mContext != null) {
             mContext.registerReceiver(mReceiver, new IntentFilter("fan.action.PROVISION_ANIM_END"), Context.RECEIVER_EXPORTED);
             Intent intent = new Intent("fan.intent.action.OOBSERVICE");
-            intent.setPackage("com.sevtinge.hyperceiler");
+            intent.setPackage(ProjectApi.mAppModulePkg);
             mContext.bindService(intent, mConnection, 1);
         } else {
             ModuleLog.e(TAG, "registerAnimService context is null");

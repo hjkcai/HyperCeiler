@@ -17,7 +17,7 @@ import java.util.List;
 public final class HomeQuickSwitchOS4 {
     public static final int TRANSACTION = 0x00484351;
     public static final int ACK = 0x48435131;
-    private static final Uri PREFS = Uri.parse("content://com.sevtinge.hyperceiler.provider.sharedprefs/home_gestures");
+    private static final Uri PREFS = Uri.parse("content://" + com.sevtinge.hyperceiler.libhook.provider.SharedPrefsProvider.AUTHORITY + "/home_gestures");
     private static long lastSwitch;
     private HomeQuickSwitchOS4() {}
 

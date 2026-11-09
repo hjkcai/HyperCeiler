@@ -21,11 +21,12 @@ package com.sevtinge.hyperceiler.log;
 import androidx.annotation.ColorRes;
 import androidx.annotation.NonNull;
 
+import com.sevtinge.hyperceiler.BuildConfig;
 import com.sevtinge.hyperceiler.R;
 
 public final class LogDisplayHelper {
 
-    private static final String APP_PACKAGE = "com.sevtinge.hyperceiler";
+    private static final String APP_PACKAGE = BuildConfig.APPLICATION_ID;
     public static final String OTHER_TAG_VALUE = "Other";
     private static final String META_PREFIX = "[[HC_META uidPid=";
     private static final String META_SUFFIX = "]] ";

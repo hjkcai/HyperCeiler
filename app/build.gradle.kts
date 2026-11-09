@@ -13,6 +13,10 @@ plugins {
 }
 
 val apkId = "HyperCeiler"
+// 运行期身份，默认值与官方发布一致。改 gradle.properties 里的 hyperceilerAppId
+// 即可换包名；Provider authority 与自定义权限名都从它派生，不会互相脱节。
+val appModuleId: String = providers.gradleProperty("hyperceilerAppId")
+    .getOrElse("com.sevtinge.hyperceiler")
 val gitHash: String by lazy { runGitCommand("rev-parse", "--short", "HEAD") ?: "unknown" }
 val gitHashLong: String by lazy { runGitCommand("rev-parse", "HEAD") ?: "unknown" }
 val gitCommitCount: Int by lazy { runGitCommand("rev-list", "--count", "HEAD")?.toIntOrNull() ?: 0 }
@@ -45,11 +49,22 @@ android {
     buildToolsVersion = "37.0.0"
 
     defaultConfig {
-        applicationId = namespace
+        applicationId = appModuleId
         minSdk = 35
         targetSdk = 37
         versionCode = gitVersionCode
         versionName = "2.10.166"
+
+        // manifest 里的 authority 与自定义权限名全部从这里取，避免换包名时漏改一处
+        // 就撞上 INSTALL_FAILED_CONFLICTING_PROVIDER。
+        manifestPlaceholders += mapOf(
+            "appModuleId" to appModuleId,
+            "sharedPrefsAuthority" to "${appModuleId}.provider.sharedprefs",
+            "settingsAuthority" to "${appModuleId}.provider.settings",
+            "crashPermission" to "${appModuleId}.permission.APP_CRASH",
+            "readSettingsPermission" to "${appModuleId}.permission.READ_SETTINGS",
+            "writeSettingsPermission" to "${appModuleId}.permission.WRITE_SETTINGS"
+        )
 
         val buildTime = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").apply {
             timeZone = TimeZone.getTimeZone("Asia/Shanghai")
@@ -79,9 +94,24 @@ android {
         }
     }
 
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
+    // 没有 x86_64 模拟能力的 aarch64 主机无法运行 NDK，因为官方 NDK 只发布 linux-x86_64 工具链。
+    // 打开 prebuiltNative 后跳过 CMake，改用 app/src/prebuiltNative/arm64-v8a 下的 .so。
+    // 只有在本机改过 app/src/main/cpp 时才必须关掉它。
+    val usePrebuiltNative = providers.gradleProperty("prebuiltNative").map(String::toBoolean).getOrElse(false)
+
+    if (!usePrebuiltNative) {
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+            }
+        }
+    }
+
+    sourceSets {
+        getByName("main") {
+            if (usePrebuiltNative) {
+                jniLibs.srcDir("src/prebuiltNative")
+            }
         }
     }
 
