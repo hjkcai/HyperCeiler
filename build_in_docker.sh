@@ -24,7 +24,10 @@ base_image=eclipse-temurin:25-jdk-noble
 serial="${ADB_SERIAL:-localhost:5555}"
 app_id=$(sed -n 's/^hyperceilerAppId=//p' "${root}/gradle.properties")
 build_type=release
-proxy_url="http://127.0.0.1:7890"
+# 代理配置。能直连外网的机器留空即可（默认）。受限网络下设置 PROXY_URL，
+# 例如 PROXY_URL=http://127.0.0.1:7890 ./build_in_docker.sh
+# 注意容器内访问宿主代理要用网关地址，不能用 127.0.0.1。
+proxy_url="${PROXY_URL:-}"
 signing_dir="${HOME}/.android"
 keystore="${signing_dir}/release.keystore"
 signing_props="${signing_dir}/release-signing.properties"
@@ -88,6 +91,7 @@ if [[ "$rebuild_image" -eq 1 ]] || ! docker image inspect "$image" >/dev/null 2>
     --build-arg "HTTPS_PROXY=${proxy_url}" \
     --build-arg "http_proxy=${proxy_url}" \
     --build-arg "https_proxy=${proxy_url}" \
+    --build-arg "JAVA_TOOL_OPTIONS=" \
     -f "${root}/docker/android-builder.Dockerfile" \
     -t "$image" \
     "${root}/docker"
@@ -125,6 +129,15 @@ if [[ "$native_build" -eq 0 ]]; then
   fi
 fi
 
+# JVM 代理参数必须跟随 PROXY_URL；留空时容器直连。硬编码一个失效代理会让
+# Gradle 连插件仓库都解析不到（本次合并后 AGP 升到 9.5.1 时踩过这个坑）。
+jvm_proxy_args=()
+if [[ -n "$proxy_url" ]]; then
+  proxy_host=$(printf '%s' "$proxy_url" | sed -E 's#^https?://##; s#:[0-9]+$##')
+  proxy_port=$(printf '%s' "$proxy_url" | sed -E 's#^.*:##; s#[^0-9].*##')
+  jvm_proxy_args=(-e "JAVA_TOOL_OPTIONS=-Dhttp.proxyHost=${proxy_host} -Dhttp.proxyPort=${proxy_port} -Dhttps.proxyHost=${proxy_host} -Dhttps.proxyPort=${proxy_port}")
+fi
+
 docker run --rm \
   --name "$container" \
   -e HOST_UID="$(id -u)" \
@@ -136,7 +149,7 @@ docker run --rm \
   -e http_proxy="${proxy_url}" \
   -e https_proxy="${proxy_url}" \
   -e NO_PROXY=localhost,127.0.0.1 \
-  -e JAVA_TOOL_OPTIONS="-Dhttp.proxyHost=10.0.1.1 -Dhttp.proxyPort=7890 -Dhttps.proxyHost=10.0.1.1 -Dhttps.proxyPort=7890" \
+  "${jvm_proxy_args[@]}" \
   -v "${root}":/project \
   -v "${keystore}":"${keystore}":ro \
   -v "${signing_props}":"${signing_props}":ro \

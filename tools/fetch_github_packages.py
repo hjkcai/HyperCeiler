@@ -15,6 +15,7 @@ ReChronoRain/HyperCeiler 的 GitHub Packages 私有 registry 上。该 registry 
 
 import argparse
 import html
+import os
 import re
 import subprocess
 import sys
@@ -31,7 +32,8 @@ PACKAGE_PAGE_IDS = [
 ]
 
 PACKAGE_PAGE = "https://github.com/ReChronoRain/HyperCeiler/packages/{id}"
-PROXY = "http://127.0.0.1:7890"
+# 能直连外网的机器留空即可（默认读环境变量，未设置则不走代理）。
+PROXY = os.environ.get("HYPERCEILER_PROXY", "")
 
 
 def fetch(url: str) -> bytes:

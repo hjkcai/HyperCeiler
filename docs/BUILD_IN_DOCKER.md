@@ -17,9 +17,73 @@ cd HyperCeiler
 产物在 `app/build/outputs/apk/release/`。签名沿用 `~/.android/release.keystore`，
 第一次运行前需要它存在，格式见下文「签名」。
 
-前提：Docker、`python3`、`curl`，以及能访问 `github.com`、`dl.google.com` 和
-Maven 镜像的外网。**能直连外网的机器不需要配任何代理**，脚本里的代理相关变量
-只影响容器内部的下载，直连时可全部留空或忽略。
+前提：Docker、`python3`、`curl`，以及能访问 `github.com`、`dl.google.com`、
+`docker.hjk.is` 和 Maven 镜像的外网。
+
+**脚本默认直连，不设任何代理。** 能直连外网的机器什么都不用配。只有受限网络才
+需要显式设置 `PROXY_URL`，例如：
+
+```sh
+PROXY_URL=http://172.17.0.1:7890 ./build_in_docker.sh
+```
+
+注意容器内访问宿主代理要用 docker0 网关地址，不能用 `127.0.0.1`。
+`PROXY_URL` 会同时驱动容器内的 `HTTP_PROXY` 与 JVM 的 `JAVA_TOOL_OPTIONS`；
+私有依赖抓取脚本则读 `HYPERCEILER_PROXY`。两者都留空时全程直连。
+
+这里踩过一个坑：早期版本把 JVM 代理硬编码成 `10.0.1.1:7890`，代理失效后
+Gradle 连插件仓库都解析不到（合并上游、AGP 升到 9.5.1 时报
+`UnknownPluginException`）。现在代理参数跟随 `PROXY_URL`，空值就完全不设置。
+
+另一个实测过的坑：docker daemon 若全局配置了代理（用 `docker info | grep -i proxy`
+查看）而该代理不稳定，拉基础镜像会报 `failed to resolve source metadata ... EOF`。
+此时不改系统配置，在单次构建里把所有代理 ARG 传空即可：
+
+```sh
+docker build --network=host \
+  --build-arg HTTP_PROXY= --build-arg HTTPS_PROXY= \
+  --build-arg http_proxy= --build-arg https_proxy= \
+  --build-arg JAVA_TOOL_OPTIONS= \
+  -f docker/android-builder.Dockerfile -t hyperceiler-android-builder docker
+```
+
+Dockerfile 里 `JAVA_TOOL_OPTIONS` 现在是 ARG 驱动的，必须一起传空，否则 Java
+工具仍会去连那个失效的代理。容器内的 `curl` / `apt` 不看这个变量，始终直连。
+
+判断依据：`curl -sS -o /dev/null -w '%{http_code}' https://docker.hjk.is/v2/.../manifests/25-jdk-noble`
+直连返回 200、走代理报 TLS EOF，就说明是代理的问题。
+
+如果覆盖 ARG 之后 docker 仍去请求 registry（daemon 的代理配置不归 buildkit 的
+ARG 管），用 `skopeo` 把基础镜像直接导进来，再打一个与 Dockerfile 同名的本地 tag，
+这样构建时命中本地缓存、完全不碰网络：
+
+```sh
+skopeo --override-arch arm64 copy \
+  docker://docker.hjk.is/library/eclipse-temurin:25-jdk-noble \
+  docker-archive:/tmp/temurin.tar:eclipse-temurin:25-jdk-noble
+docker load -i /tmp/temurin.tar
+docker tag eclipse-temurin:25-jdk-noble \
+  docker.hjk.is/library/eclipse-temurin:25-jdk-noble
+docker build --pull=false --network=host \
+  -f docker/android-builder.Dockerfile -t hyperceiler-android-builder docker
+```
+
+`--override-arch` 要按构建机的实际架构选（这台是 aarch64，所以用 arm64）。
+
+另一个实测过的坑：官方 build-tools 里的 `aapt2` / `aidl` 等是 x86_64 二进制，
+必须换成 Commit451 维护的 arm64 版本，而这些文件托管在 GitHub Release 上。
+部分网络直连 `github.com/.../releases/download/...` 会超时，镜像站又偶尔返回
+**200 但内容被截断到几百 KB** 的坏文件。
+
+因此仓库里预置了校验过的 8 个文件，放在 `docker/arm64-build-tools/<version>/`，
+Dockerfile 优先 COPY 它们，构建时完全不联网。要重新生成或升级版本时运行：
+
+```sh
+python3 tools/fetch_arm64_build_tools.py
+```
+
+脚本会重试多个源，逐个校验 ELF 架构（aarch64）与最小文件大小，再落盘。
+只有预置目录不存在时，Dockerfile 才会退回网络下载。
 
 ## 工具链为什么是这一套
 
