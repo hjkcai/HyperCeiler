@@ -5,6 +5,37 @@
 
 接手前请先读 `docs/BUILD_IN_DOCKER.md`，那是构建方式的说明。
 
+## 2026-11-25 更新：已合并上游 61 个提交
+
+上游 `ReChronoRain/HyperCeiler` 从 `a41e309e6` 到 `2e4de5e74` 共 61 个提交，
+已合并进本仓库的 `main`（合并提交 `5201c41a0`），并推送到
+`git@github.com:hjkcai/HyperCeiler.git`。
+
+**上游没有解决进程反复启停的问题。** 我们修复过的 8 个核心文件，上游一个都没动：
+
+| 修复点 | 上游最新值 |
+| --- | --- |
+| `HomeLayoutNativeEndpointOS4` 周期轮询 | `PREFS_REFRESH_MS = 1500`，仍是 1.5 秒跨进程查询 |
+| `HomeDockWindow` 空闲退避 | `SWEEP_BACKOFF_MAX_MS = 8_000L`，sweep 里无条件 `refreshGeometry()` |
+| `HomeRecentsHapticEndpointOS4` | 仍在 WMS Binder 事务里同步 `query(PREFS,…)` |
+| 两个 QuickSwitch / ExtraGestures observer | 仍挂在 `ROOT` |
+
+上游有两条提交（`223bc500f`、`658de2bd2`）明确提到了 `provider-only cold starts`，
+但只是把日志导入与健康检查从 `Application.onCreate` 挪到打开 UI 时执行，
+让每次冷启动少干点活，并没有消除冷启动本身。合并时保留了我们的全部修复。
+
+**合并后的构建链也修好了**（提交 `902e1a1fa`）：脚本默认直连、代理由
+`PROXY_URL` 驱动；arm64 build-tools 预置到 `docker/arm64-build-tools/`，不再依赖
+不稳定的 GitHub Release 镜像站。合并后 `2.11.170` 源码编译通过，产物包名与
+Provider authority 仍是 `com.hjkcai.HyperCeiler.*`。
+
+**合并时的一处取舍**：`ChangeBrowserForAIEngine.kt` 原本在工作区有一套 366 行的
+本地改动，与上游 `a0e9cf536` 的 247 行重写是同一功能的两套独立实现。合并采用
+上游版本。本地版本仍在 tag `pre-upstream-merge` 里，随时可取回。
+
+**待验证**：合并后尚未在真机上复测零启停。当前 `localhost:5555` 处于 offline，
+需要手机端重新确认无线调试授权。设备恢复后按本文「验证手法备忘」跑一遍。
+
 ## 一句话背景
 
 HyperCeiler 在后台反复冷启动模块主进程，每 5 秒一轮，持续耗电。根因是宿主进程
