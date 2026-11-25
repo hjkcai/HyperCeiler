@@ -5,6 +5,9 @@
 
 读者对象是接手这个仓库、需要在别的机器上复现构建的人。全程不需要 GitHub 凭据。
 
+当前仓库已合并上游 61 个提交（AGP 9.5.1、`versionName 2.11.170`），并保留了
+本仓库自己的耗电修复与可共存包名。构建链在 2026-11-25 的合并验证中实测通过。
+
 ## 结论先看
 
 ```sh
@@ -89,7 +92,7 @@ python3 tools/fetch_arm64_build_tools.py
 
 | 组件 | 版本 | 为什么不能用更低的 |
 | --- | --- | --- |
-| JDK | 25 | AGP 9.4 + Kotlin 2.4 的 toolchain 声明就是 25，21 会直接编译失败 |
+| JDK | 25 | AGP 9.5.1 + Kotlin 2.4 的 toolchain 声明就是 25，21 会直接编译失败 |
 | compileSdk | 37 | 项目 `compileSdk = 37`，且 `android.suppressUnsupportedCompileSdk=37.0` 已打开 |
 | build-tools | 37.0.0 与 36.0.0 | app 模块指定 37；library 模块没指定，AGP 会回退到默认的 36 |
 | NDK | 30.0.16248370 | 镜像内预装；CMake 配置需要它 |
@@ -141,8 +144,10 @@ if (localRepoDir.isDirectory) {
 }
 ```
 
-它排在仓库列表最前，命中后不再访问任何网络仓库。同时 GPR 仓库改成有凭据才注册，
-避免空凭据请求拿到 401 后拖慢解析。
+它排在仓库列表最前，命中后不再访问任何网络仓库。GPR 仓库始终注册，但有凭据时
+才带 `credentials`；无凭据时用 `content { includeGroup(...) }` 只放行两个私有依赖组，
+避免空凭据请求打到其他公开依赖上拖慢解析。这个「可空凭据 + 内容过滤」是上游
+`270351d8a` 引入的，合并时保留了。
 
 ### 边界
 
@@ -250,7 +255,12 @@ ADB_SERIAL=localhost:5555 ./build_in_docker.sh --install
 `.gradle` 再跑。
 
 **`AAPT2 Daemon startup failed`。** 镜像里 build-tools 的可执行文件仍是 x86_64。
-检查 `docker/android-builder.Dockerfile` 里 Commit451 替换那一段是否执行成功。
+Dockerfile 会优先 COPY `docker/arm64-build-tools/` 下预置的 arm64 版本；若这些文件
+缺失或被覆盖，才会退回网络下载。用下面命令确认镜像内的架构应为 aarch64：
+
+```sh
+docker run --rm hyperceiler-android-builder /opt/android-sdk/build-tools/37.0.0/aapt2 version
+```
 
 **依赖解析 401。** `localrepo/` 不完整。删掉后重新运行，脚本会重抓。
 
@@ -261,9 +271,11 @@ authority。把 `hyperceilerAppId` 改成别的值重新构建。
 
 | 文件 | 作用 |
 | --- | --- |
-| `build_in_docker.sh` | 入口脚本，构建 / 安装 / 重建镜像 |
+| `build_in_docker.sh` | 入口脚本，构建 / 安装 / 重建镜像；代理由 `PROXY_URL` 驱动 |
 | `docker/android-builder.Dockerfile` | JDK 25 + SDK 37 + NDK + arm64 build-tools |
+| `docker/arm64-build-tools/<version>/` | 预置并校验过的 8 个 arm64 可执行文件，入库，构建时不联网 |
+| `tools/fetch_arm64_build_tools.py` | 重新生成上面这批文件 |
 | `tools/fetch_github_packages.py` | 从公开包页面抓私有依赖到 `localrepo/` |
-| `settings.gradle.kts` | 本地仓库优先、GPR 凭据可选 |
+| `settings.gradle.kts` | 本地仓库优先、GPR 凭据可选 + 内容过滤 |
 | `gradle.properties` | `hyperceilerAppId` 与内存参数 |
 | `.gitignore` | `/localrepo/`、`/decomp/`、`signing.properties` |

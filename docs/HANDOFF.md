@@ -151,37 +151,34 @@ hook 体系，共约 22710 行：
 **已知的坑**：我在 `libapp.so` 里搜「全部应用」「应用」「设置」等中文全部为 0，
 说明 Dart AOT 的字符串不是明文存放。定位函数不能靠搜字符串。
 
-### 2. 触感回归（我改坏了，已修复但待验证）
+### 2. 触感回归（已修复，重启后应生效，仍待用户手动确认）
 
 **现象**：用户报告「最近任务列表里划动卡片震动没了」。
 
 **原因**：我把 `HomeRecentsHapticEndpointOS4.receive` 改成读缓存，但首次调用时
 缓存为空，直接返回 `unavailable`，导致第一次（乃至前几次）滑动没有震动。
 
-**已做的修复**：新增 `prime()`，在 `HomeDockWindow.init()` 时预热缓存：
+**已做的修复**：新增 `prime()`，在 `HomeDockWindow.init()` 时预热缓存（`HomeDockWindow.kt`
+第 490 行），Binder 路径仍然只读缓存，不做同步查询 —— 这是刻意保持的，否则又会
+引入冷启动。
 
-```kotlin
-runCatching {
-    HomeRecentsHapticEndpointOS4
-        .prime(service?.getObjectFieldAs<android.content.Context>("mContext"))
-}.onFailure { glassClient.record("haptic prime failed=${it.javaClass.simpleName}") }
-```
-
-Binder 路径仍然只读缓存，不做同步查询 —— 这是刻意保持的，否则又会引入冷启动。
-
-**待验证**：修复已编译进 `HyperCeiler-2.10.166-20261109-release.apk` 并安装，但
-桌面进程是安装前启动的，hook 未重新注入。需要执行：
-
-```sh
-adb shell am force-stop com.miui.home
-```
-
-桌面会自动重启。然后打开最近任务滑卡片确认震动恢复。
+**当前状态**：修复在合并上游后依然保留，且真机已于 2026-11-25 完整重启，
+hook 重新注入（`HyperCeiler.HomeLayout` / `HomeLayoutEngine` 日志正常）。理论上
+首次滑动就有震动了。但我没有亲自在最近任务里滑卡片确认，所以这一项仍需用户
+手动验证一次。
 
 **若仍未恢复**，检查 `HomeRecentsHapticEndpointOS4` 里 `installObserverIfNeeded` 的
 `context.getContentResolver().registerContentObserver(...)` 是否在 system_server
 里成功。这段代码运行在宿主进程，context 来自
-`ContextUtils.getContextNoError(ContextUtils.FlAG_ONLY_ANDROID)`。可以临时加日志确认。
+`ContextUtils.getContextNoError(ContextUtils.FlAG_ONLY_ANDROID)`。也可以先查
+provider 本身是否有值：
+
+```sh
+adb shell content query --uri content://com.hjkcai.HyperCeiler.provider.sharedprefs/home_recents_haptic
+```
+
+重启后实测返回 `schema=1, enabled=1, type=0, strength=10`，说明数据源正常，
+问题若有则一定在预热或 observer 注册环节。
 
 ### 3. 待用户确认的功能面
 
@@ -210,18 +207,24 @@ adb shell am force-stop com.miui.home
 这次工作全程在主工作区 `/home/hjkcai/Projects/HyperCeiler` 进行，没有用 worktree。
 用户环境中可能有其他 agent 并行运行，不要执行 `git stash`。
 
-### 工作区里有一处非本次改动
+### 关于 `ChangeBrowserForAIEngine.kt`
 
-`library/libhook/.../ChangeBrowserForAIEngine.kt` 有 131 行改动，是用户此前就留在
-工作区的，与本次任务无关。它已被一起提交，因为用户要求「提交当前的代码修改」。
+这个文件原本在工作区有一套 366 行的本地改动（用户此前留下的），与上游
+`a0e9cf536` 的 247 行重写是同一功能的两套独立实现。合并上游时采用了上游版本，
+因为两套并存会冲突，且该文件与耗电修复无关。本地版本保存在 tag
+`pre-upstream-merge`，需要时可用 `git show pre-upstream-merge:<path>` 取回。
 
 ### 设备信息
 
-- 序列号：`localhost:5555`（无线调试，偶尔会掉线，重连即可）
+- 序列号：`localhost:5555`（无线调试，偶尔会掉线；adb 连不上时重启 adb server
+  `adb kill-server && adb start-server`，仍不行则需要手机端重新确认无线调试授权）
+- 也可能同时出现 `emulator-5554`，此时所有 adb 命令都要带 `-s localhost:5555`
 - 型号：25098PN5AC
 - 系统：HyperOS V816 / OS4.0.5.0.XBLCNXM
 - 桌面版本：需要通过 `dumpsys package com.miui.home` 查
-- 已安装两个包：官方 `com.sevtinge.hyperceiler`、自编译 `com.hjkcai.HyperCeiler`
+- 已安装两个包：官方 `com.sevtinge.hyperceiler`（`2.10.166-0830c5875-r4733`）、
+  自编译 `com.hjkcai.HyperCeiler`（`2.11.170-20261125`）
+- 系统模块安装或更新后需要**重启手机**才生效，仅 `am force-stop` 不够
 
 ## 验证手法备忘
 
@@ -237,9 +240,9 @@ adb -s localhost:5555 logcat -b events -d -t 3000 \
 ### 确认进程是否真的空闲
 
 ```sh
-P=$(adb shell pidof com.hjkcai.HyperCeiler)
+P=$(adb -s localhost:5555 shell pidof com.hjkcai.HyperCeiler | tr -d '\r')
 # 每隔 10 秒读一次，utime/stime 不变才算空闲
-adb shell "cat /proc/$P/stat | awk '{print \$14, \$15}'"
+adb -s localhost:5555 shell "cat /proc/$P/stat | awk '{print \$14, \$15}'"
 ```
 
 ### 查看模块是否被 LSPosed 激活
@@ -276,5 +279,17 @@ Flutter 界面会表现为扁平的 `android.view.View` 树，文本在 `content
 ## 提交历史对照
 
 本次工作基于上游 `a41e309e6`（`fix(libhook): gate launcher recovery hook on prefs
-retry state`）。远端 `origin/main` 在 `293cbc08d`（`docs: add Japanese README`），
-是纯文档提交，可以直接快进。
+retry state`）。仓库 `origin` 已改为 `git@github.com:hjkcai/HyperCeiler.git`。
+
+关键提交（由旧到新）：
+
+| 提交 | 内容 |
+| --- | --- |
+| `331d91077` | 耗电修复：停止宿主进程轮询 provider、包名派生 |
+| `edf2ff04d` | Docker 构建链、私有依赖匿名抓取、构建与交接文档 |
+| `5201c41a0` | 合并上游 61 个提交，保留全部耗电修复 |
+| `902e1a1fa` | 修复代理硬编码、预置 arm64 build-tools |
+| `fdf14073c` | 记录上游未解决该问题的结论 |
+| `1bda15737` | 记录重启后的零启停复测结果 |
+
+备份 tag `pre-upstream-merge` 指向合并前状态（`edf2ff04d`）。
