@@ -38,8 +38,8 @@ fun runGitCommand(vararg args: String): String? = runCatching {
 }.getOrNull()
 
 fun loadPropertiesFromFile(fileName: String): Properties? =
-    rootProject.file(fileName).takeIf { it.exists() }?.let { file ->
-        Properties().apply { load(file.inputStream()) }
+    rootProject.file(fileName).takeIf { it.isFile }?.let { file ->
+        Properties().apply { file.inputStream().use { load(it) } }
     }
 
 android {
@@ -53,7 +53,7 @@ android {
         minSdk = 35
         targetSdk = 37
         versionCode = gitVersionCode
-        versionName = "2.10.166"
+        versionName = "2.11.170"
 
         // manifest 里的 authority 与自定义权限名全部从这里取，避免换包名时漏改一处
         // 就撞上 INSTALL_FAILED_CONFLICTING_PROVIDER。
@@ -137,11 +137,10 @@ android {
         }
     }
 
-    val properties: Properties? = loadPropertiesFromFile("signing.properties")
-    fun getString(propertyName: String, environmentName: String, prompt: String): String =
-        properties?.getProperty(propertyName)
-            ?: System.getenv(environmentName)
-            ?: System.console()?.readLine("\n$prompt: ").orEmpty()
+    val signingProperties = loadPropertiesFromFile("signing.properties")
+    fun signingValue(propertyName: String, environmentName: String): String? =
+        signingProperties?.getProperty(propertyName)?.takeIf { it.isNotBlank() }
+            ?: providers.environmentVariable(environmentName).orNull?.takeIf { it.isNotBlank() }
 
     val buildTimeSuffix: String by lazy {
         SimpleDateFormat("MMddHHmm").apply {
@@ -152,25 +151,30 @@ android {
         DateTimeFormatter.ofPattern("yyyyMMdd").format(LocalDateTime.now())
     }
 
-    signingConfigs {
-        create("hasProperties") {
-            if (properties != null) {
-                storeFile = file(getString("storeFile", "STORE_FILE", "Store file"))
-                storePassword = getString("storePassword", "STORE_PASSWORD", "Store password")
-                keyAlias = getString("keyAlias", "KEY_ALIAS", "Key alias")
-                keyPassword = getString("keyPassword", "KEY_PASSWORD", "Key password")
-            }
+    val signingStorePath = signingValue("storeFile", "STORE_FILE")
+    val signingStorePassword = signingValue("storePassword", "STORE_PASSWORD")
+    val signingKeyAlias = signingValue("keyAlias", "KEY_ALIAS")
+    val signingKeyPassword = signingValue("keyPassword", "KEY_PASSWORD")
+    val customSigningConfig = if (signingStorePath != null && signingStorePassword != null &&
+        signingKeyAlias != null && signingKeyPassword != null
+    ) {
+        signingConfigs.create("hasProperties") {
+            storeFile = file(signingStorePath)
+            storePassword = signingStorePassword
+            keyAlias = signingKeyAlias
+            keyPassword = signingKeyPassword
             enableV1Signing = true
             enableV2Signing = true
             enableV3Signing = true
             enableV4Signing = true
         }
+    } else {
+        null
     }
 
     buildTypes {
         val configSigning: ApplicationBuildType.() -> Unit = {
-            val signingConfigName = if (properties != null) "hasProperties" else "debug"
-            signingConfig = signingConfigs.findByName(signingConfigName)
+            signingConfig = customSigningConfig ?: signingConfigs.getByName("debug")
         }
 
         val applyBase: ApplicationBuildType.() -> Unit = {
@@ -200,16 +204,19 @@ android {
         }
 
         debug {
+            configSigning()
             isMinifyEnabled = false
             buildConfigField("String", "GIT_HASH", "\"$gitHashLong\"")
             buildConfigField("String", "GIT_CODE", "\"$gitVersionCode\"")
             versionNameSuffix = "-${buildTimeSuffix}-r${gitVersionCode}"
-            if (properties != null) {
-                signingConfig = signingConfigs.findByName("hasProperties")
-            }
         }
     }
 
+    lint {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(25)
+        }
+    }
 }
 
 afterEvaluate {

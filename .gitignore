@@ -46,3 +46,5 @@ reports/
 # 逆向分析输入：从真机拉取的厂商 APK 与从中解出的 so。体积大、含第三方代码，
 # 且属于可再生成的输入，不入库。复现方式见 docs/BUILD_IN_DOCKER.md。
 /decomp/
+/.reasonix/
+/.vscode/

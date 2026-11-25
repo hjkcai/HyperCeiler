@@ -38,6 +38,11 @@ android {
         create("beta") {}
         create("canary") {}
     }
+    lint {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(25)
+        }
+    }
 }
 
 java {

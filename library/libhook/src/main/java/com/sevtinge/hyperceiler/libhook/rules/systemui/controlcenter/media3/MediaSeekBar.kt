@@ -21,6 +21,9 @@ package com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.media3
 import android.annotation.SuppressLint
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.text.format.DateUtils
 import android.view.View
 import android.view.ViewGroup
@@ -47,16 +50,16 @@ import com.sevtinge.hyperceiler.libhook.utils.hookapi.systemui.controlcenter.med
 import com.sevtinge.hyperceiler.libhook.utils.hookapi.systemui.controlcenter.progress.CometSeekBar
 import com.sevtinge.hyperceiler.libhook.utils.hookapi.systemui.controlcenter.progress.SquigglySeekBar
 import com.sevtinge.hyperceiler.libhook.utils.hookapi.systemui.controlcenter.progress.ThumbStyle
+import com.sevtinge.hyperceiler.libhook.utils.hookapi.tool.getIdByName
+import io.github.lingqiqi5211.ezhooktool.xposed.EzXposed.appContext
 import io.github.lingqiqi5211.ezhooktool.xposed.dsl.afterHookConstructor
 import io.github.lingqiqi5211.ezhooktool.xposed.dsl.afterHookMethod
 import io.github.lingqiqi5211.ezhooktool.xposed.dsl.beforeHookMethod
 import io.github.lingqiqi5211.ezhooktool.xposed.dsl.findFieldOrNull
 import io.github.lingqiqi5211.ezhooktool.xposed.dsl.getAdditionalInstanceField
-import com.sevtinge.hyperceiler.libhook.utils.hookapi.tool.getIdByName
 import io.github.lingqiqi5211.ezhooktool.xposed.dsl.getObjectFieldOrNull
 import io.github.lingqiqi5211.ezhooktool.xposed.dsl.getObjectFieldOrNullAs
 import io.github.lingqiqi5211.ezhooktool.xposed.dsl.setAdditionalInstanceField
-import io.github.lingqiqi5211.ezhooktool.xposed.EzXposed.appContext
 
 object MediaSeekBar : BaseHook() {
     private const val KEY_REAL_SEEKBAR = "KEY_REAL_PROGRESS_BAR"
@@ -82,6 +85,9 @@ object MediaSeekBar : BaseHook() {
     }
     private val ncProgressRound by lazy {
         PrefsBridge.getBoolean("system_ui_control_center_media_control_progress_round")
+    }
+    private val ncProgressColorFromMedia by lazy {
+        PrefsBridge.getBoolean("system_ui_control_center_media_control_progress_color_from_media", true)
     }
 
     private val ncCustomThumbStyle by lazy {
@@ -113,6 +119,9 @@ object MediaSeekBar : BaseHook() {
     }
     private val diProgressRound by lazy {
         PrefsBridge.getBoolean("system_ui_island_media_control_progress_round")
+    }
+    private val diProgressColorFromMedia by lazy {
+        PrefsBridge.getBoolean("system_ui_island_media_control_progress_color_from_media", true)
     }
 
     private val diCustomThumbStyle by lazy {
@@ -197,12 +206,29 @@ object MediaSeekBar : BaseHook() {
             getOrCreateRealSeekBar(it.thisObject, false)
         }
 
-        if (isMoreAndroidVersion(36)) {
+        val progressClass = clzProgress
+        val progressControllerClass = miuiMediaViewControllerImpl
+        val seekBarChanged = progressControllerClass?.declaredMethods?.firstOrNull {
+            it.name == "seekBarChanged" && it.parameterCount == 1 &&
+                it.parameterTypes[0] == progressClass
+        }
+
+        if (seekBarChanged != null) {
+            requireNotNull(progressControllerClass).beforeHookMethod(
+                "seekBarChanged",
+                requireNotNull(progressClass)
+            ) { param ->
+                val holder = param.thisObject.getObjectFieldOrNull("holder") ?: return@beforeHookMethod
+                val vmProgress = param.args[0] ?: return@beforeHookMethod
+                onProgressChanged(holder, vmProgress, false)
+                param.result = null
+            }
+        } else if (isMoreAndroidVersion(36)) {
             seekBarObserverNew?.beforeHookMethod("onChanged") {
-                val controllerImpl =
+                val owner =
                     it.thisObject.getObjectFieldOrNull($$"this$0") ?: return@beforeHookMethod
                 val holder =
-                    controllerImpl.getObjectFieldOrNull("holder") ?: return@beforeHookMethod
+                    owner.getObjectFieldOrNull("holder") ?: return@beforeHookMethod
                 val vmProgress = it.args[0] ?: return@beforeHookMethod
                 onProgressChanged(holder, vmProgress, false)
                 it.result = null
@@ -250,8 +276,17 @@ object MediaSeekBar : BaseHook() {
                 val enableFullAod = fldEnableFullAod?.get(controller) == true
                 val isDark = enableFullAod || isDarkMode() || (ncBackgroundStyle == 0 && ncAlwaysDark)
                 val seekBar = getOrCreateRealSeekBar(holder, false) ?: return@afterHookMethod
-                seekBar.progressTintList = ColorStateList.valueOf(if (isDark) Color.WHITE else Color.BLACK)
-                XposedLog.d(TAG, lpparam.packageName, "updateForegroundColors: isDark=$isDark (fullAod=$enableFullAod, alwaysDark=$ncAlwaysDark)")
+                val mediaColor = if (ncProgressColorFromMedia) {
+                    CustomBackgroundOS4.seekBarColor(holder)
+                        ?: AmbientLightOS4.seekBarColor(holder, isDark)
+                } else {
+                    null
+                }
+                val fallbackColor = if (isDark) Color.WHITE else Color.BLACK
+                if (!applySeekBarColor(holder, mediaColor ?: fallbackColor, false)) {
+                    seekBar.progressTintList = ColorStateList.valueOf(mediaColor ?: fallbackColor)
+                }
+                XposedLog.d(TAG, lpparam.packageName, "updateForegroundColors: isDark=$isDark (fullAod=$enableFullAod, alwaysDark=$ncAlwaysDark, mediaColor=$mediaColor)")
             }
         }
     }
@@ -319,10 +354,54 @@ object MediaSeekBar : BaseHook() {
         fldProgressHeight?.apply { isAccessible = true }?.set(seekBar, height)
     }
 
+    fun applySeekBarColor(holder: Any, color: Int, isDynamicIsland: Boolean): Boolean {
+        val enabled = if (isDynamicIsland) diProgressColorFromMedia else ncProgressColorFromMedia
+        if (!enabled) return false
+        val seekBar = holder.getAdditionalInstanceField(KEY_REAL_SEEKBAR) as? SeekBar
+            ?: if (isDynamicIsland) {
+                holder.getMediaViewHolderFieldAs<SeekBar>("seekBar", true)
+            } else {
+                holder.getObjectFieldOrNullAs<SeekBar>("seekBar")
+            } ?: return false
+        seekBar.progressTintList = ColorStateList.valueOf(color)
+
+        if (hyperProgressSeekBar?.isInstance(seekBar) == true) {
+            seekBar.getObjectFieldOrNullAs<Paint>("mPaint")?.colorFilter =
+                PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN)
+            val alpha = color ushr 24
+            val disabled = (color and 0x00ffffff) or ((alpha * 0.3f).toInt() shl 24)
+            val background = (color and 0x00ffffff) or ((alpha * 0.2f).toInt() shl 24)
+            runCatching {
+                BaseHook.callMethod(seekBar, "setForegroundPrimaryColor", color)
+                BaseHook.callMethod(seekBar, "setForegroundPrimaryDisableColor", disabled)
+                BaseHook.callMethod(seekBar, "setBackgroundPrimaryColor", background)
+                BaseHook.callMethod(seekBar, "setBackgroundPrimaryDisableColor", background)
+            }.onFailure {
+                XposedLog.e(TAG, lpparam.packageName, "Unable to apply media color to HyperProgressSeekBar", it)
+            }
+        }
+        return true
+    }
+
     private fun bindSeekBarListener(holder: Any, seekBarViewModel: Any, isDynamicIsland: Boolean) {
+        val seekBar = getOrCreateRealSeekBar(holder, isDynamicIsland) ?: return
+        val attachTouchHandlers = clzSeekBarViewModel?.declaredMethods?.firstOrNull {
+            it.name == "attachTouchHandlers" && it.parameterCount == 1 &&
+                it.parameterTypes[0] == SeekBar::class.java
+        }
+        if (attachTouchHandlers != null) {
+            runCatching {
+                attachTouchHandlers.isAccessible = true
+                attachTouchHandlers.invoke(seekBarViewModel, seekBar)
+            }.onFailure {
+                XposedLog.e(TAG, lpparam.packageName, "Unable to bind OEM seek listener", it)
+            }
+            return
+        }
+
         val falsingManager = fldFalsingManager?.get(seekBarViewModel)
         val listener = ctorSeekBarChangeListener?.newInstance(seekBarViewModel, falsingManager) as? SeekBar.OnSeekBarChangeListener
-        getOrCreateRealSeekBar(holder, isDynamicIsland)?.setOnSeekBarChangeListener(listener)
+        seekBar.setOnSeekBarChangeListener(listener)
     }
 
     @SuppressLint("SetTextI18n")

@@ -37,6 +37,7 @@ object AmbientLightOS4 : BaseHook() {
     private const val DI = "com.android.systemui.statusbar.notification.mediaisland."
     private const val NP = "system_ui_control_center_media_control"
     private const val DP = "system_ui_island_media_control"
+    private var foregroundGroups: List<Group> = emptyList()
     private enum class Event { ATTACH, DETACH, BIND, FOREGROUND, AOD, PULL }
 
     // ROM calls and rollback can throw arbitrary runtime failures; preserve the host and cleanup boundary.
@@ -56,11 +57,12 @@ object AmbientLightOS4 : BaseHook() {
         val groups = ArrayList<Group>()
         try {
             val loader = checkNotNull(required(if (notification) NC + "MiuiMediaViewControllerImpl" else DI + "MiuiIslandMediaViewBinderImpl").classLoader)
-            val custom = notification || mode == 2
+            val custom = notification || island
             val resolver = if (custom) checkNotNull(AmbientColorResolverOS4.create(loader,
-                notification && !ncOpt || mode == 2 && !diOpt, ncOpt || diOpt)) { "OS4 ambient color ABI unavailable" } else null
+                true, ncOpt || diOpt)) { "OS4 ambient color ABI unavailable" } else null
             if (notification) groups.add(plan(false, 2, ncOpt, PrefsBridge.getBoolean(NP + "_always_dark"), active, resolver))
             if (island) groups.add(plan(true, mode, diOpt, false, active, resolver))
+            foregroundGroups = groups.toList()
             // All selected endpoints preflight before the first registration. A
             // partially installed transaction stays inert, including failed unhooks.
             for (group in groups) for ((method, event) in group.methods) {
@@ -68,6 +70,7 @@ object AmbientLightOS4 : BaseHook() {
             }
             registerHotReloadCleanup {
                 active.set(false)
+                foregroundGroups = emptyList()
                 val cleanup = Runnable { cleanAll(groups.map { { it.clear() } }) }
                 if (mainThread()) cleanup.run() else {
                     val finished = CountDownLatch(1)
@@ -82,6 +85,7 @@ object AmbientLightOS4 : BaseHook() {
             active.set(true)
         } catch (error: Throwable) {
             active.set(false)
+            foregroundGroups = emptyList()
             for (handle in handles.asReversed()) try { handle.unhook() } catch (rollback: Throwable) { error.addSuppressed(rollback) }
             throw error
         }
@@ -236,12 +240,22 @@ object AmbientLightOS4 : BaseHook() {
                         if (group.media!!.get(owner) == null) clearMedia(session, owner)
                         return
                     }
-                    if (data.javaClass != group.resolver!!.mediaDataClass || group.media!!.get(owner) !== data) return
+                    if (data.javaClass != group.resolver!!.mediaDataClass) return
                     session.data = WeakReference(data)
                     sync(session)
                     requestColor(session, owner, data)
                 }
-                Event.FOREGROUND, Event.AOD -> state.session?.let { if (state.busy == 0) sync(it) }
+                Event.FOREGROUND -> state.session?.let {
+                    if (state.busy == 0) {
+                        val currentOwner = it.owner.get()
+                        val data = currentOwner?.let(group.media!!::get)
+                        if (data != null && current(it, currentOwner)) {
+                            requestColor(it, currentOwner, data)
+                        }
+                        sync(it)
+                    }
+                }
+                Event.AOD -> state.session?.let { if (state.busy == 0) sync(it) }
                 Event.PULL -> {
                     val session = state.session ?: return
                     if (!current(session, owner) || state.busy != 0 || group.collectorHolders.indices.any {
@@ -430,11 +444,39 @@ object AmbientLightOS4 : BaseHook() {
         slot.syncing = true
         try {
             val params = view.layoutParams
-            if (params.width != original.width || params.height != original.height) {
-                params.width = original.width; params.height = original.height; view.layoutParams = params
+            val originalParams = original.layoutParams
+            val width = if (originalParams != null && originalParams.width > 0) {
+                originalParams.width
+            } else {
+                original.width
+            }
+            val height = if (originalParams != null && originalParams.height > 0) {
+                originalParams.height
+            } else {
+                original.height
+            }
+            if (params.width != width || params.height != height) {
+                params.width = width; params.height = height; view.layoutParams = params
             }
             view.x = original.x; view.y = original.y
         } finally { slot.syncing = false }
+    }
+
+    fun seekBarColor(holder: Any, dark: Boolean): Int? {
+        for (group in foregroundGroups) {
+            for (state in group.states.values.toList()) {
+                val session = state.session ?: continue
+                val owner = session.owner.get() ?: continue
+                if (!current(session, owner)) continue
+                for (slot in session.slots) {
+                    if (slot.holder.get() === holder) {
+                        val colors = session.colors ?: return null
+                        return if (dark) colors.dark else colors.light
+                    }
+                }
+            }
+        }
+        return null
     }
 
     private fun sync(session: Session) {
@@ -457,7 +499,11 @@ object AmbientLightOS4 : BaseHook() {
             if (resize) drawable.animateNextResize()
             if (!group.island) followBounds(slot)
             else if (slot.role == 1) view.translationY = group.offset!!.getFloat(owner)
-            session.colors?.let { drawable.setGradientColor(if (dark) it.dark else it.light) }
+            session.colors?.let {
+                val seekBarColor = if (dark) it.dark else it.light
+                drawable.setGradientColor(seekBarColor)
+                MediaSeekBar.applySeekBarColor(slot.holder.get() ?: return@let, seekBarColor, group.island)
+            }
             drawable.setLightMode(!dark)
             val canAnimate = playing && !aod && view.isAttachedToWindow
             val dragAllowsAnimation = !session.dragging || slot.role != 0

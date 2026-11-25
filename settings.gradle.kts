@@ -5,10 +5,10 @@ data class GprCredentials(val user: String, val key: String)
 /**
  * GitHub Packages 的凭据，取不到就返回 null。
  *
- * 官方构建机（CI）有 token，走真实的私有 registry。本地或容器构建常常没有凭据，
- * 此时不再直接失败：tools/fetch_github_packages.py 会把同一批产物抓进 localrepo/，
- * Gradle 用本地 maven 仓库即可解析。缺凭据又缺 localrepo 时，解析会在下载阶段
- * 报出找不到依赖，错误信息比在这里抛异常更具体。
+ * CI 有 token，走真实的私有 registry。本地或容器构建常常没有凭据，此时不再直接失败：
+ * tools/fetch_github_packages.py 会把同一批产物抓进 localrepo/，Gradle 用本地 maven
+ * 仓库即可解析。缺凭据又缺 localrepo 时，解析会在下载阶段报出找不到依赖，错误信息
+ * 比在这里抛异常更具体。
  */
 fun loadGprCredentials(): GprCredentials? {
     // 优先从环境变量读取
@@ -21,9 +21,7 @@ fun loadGprCredentials(): GprCredentials? {
 
     // 从 signing.properties 读取
     val propsFile = File(rootDir, "signing.properties")
-    if (!propsFile.exists()) {
-        return null
-    }
+    if (!propsFile.isFile) return null
 
     val props = java.util.Properties().apply {
         propsFile.inputStream().use { load(it) }
@@ -66,19 +64,26 @@ dependencyResolutionManagement {
             }
         }
         // Mirrors first: several artifacts on google()/mavenCentral() are redirected
-        // to github.com release assets, which is unreachable here and stalls the build.
+        // to github.com release assets, which are unreachable here and stalls the build.
         maven("https://maven.aliyun.com/repository/public")
         maven("https://maven.aliyun.com/repository/google")
         maven("https://maven.aliyun.com/repository/gradle-plugin")
         google()
         mavenCentral()
         mavenLocal()
-        // 没有凭据时不注册这个仓库，否则 Gradle 会带着空凭据请求并拿到 401。
-        gprCredentials?.let { credentials ->
-            maven("https://maven.pkg.github.com/ReChronoRain/HyperCeiler") {
+        // 没有凭据时依然注册这个仓库，但只放行缓存过的私有依赖组，避免空凭据
+        // 请求打到其他公开依赖上拖慢解析。localrepo 命中时这一条根本不会被访问。
+        maven("https://maven.pkg.github.com/ReChronoRain/HyperCeiler") {
+            val gpr = gprCredentials
+            if (gpr != null) {
                 credentials {
-                    username = credentials.user
-                    password = credentials.key
+                    username = gpr.user
+                    password = gpr.key
+                }
+            } else {
+                content {
+                    includeGroup("com.sevtinge.hyperceiler")
+                    includeGroup("fan.miuix")
                 }
             }
         }

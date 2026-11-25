@@ -4,27 +4,27 @@
  */
 package com.sevtinge.hyperceiler.libhook.rules.systemui.controlcenter.media3
 
-import android.content.Context
 import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.res.ColorStateList
-import android.os.PowerManager
-import android.view.ViewTreeObserver
-import android.widget.TextView
-import android.widget.SeekBar
-import android.widget.ImageButton
-import io.github.lingqiqi5211.ezhooktool.xposed.dsl.getAdditionalInstanceFieldAs
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
+import android.widget.ImageButton
 import android.widget.ImageView
+import android.widget.SeekBar
+import android.widget.TextView
 import com.sevtinge.hyperceiler.common.utils.PrefsBridge
 import com.sevtinge.hyperceiler.libhook.base.BaseHook
 import com.sevtinge.hyperceiler.libhook.utils.api.HostExecutor
 import io.github.libxposed.api.XposedInterface
 import io.github.lingqiqi5211.ezhooktool.xposed.common.HookParam
+import io.github.lingqiqi5211.ezhooktool.xposed.dsl.getAdditionalInstanceFieldAs
 import io.github.lingqiqi5211.ezhooktool.xposed.java.IMethodHook
 import java.lang.ref.WeakReference
 import java.lang.reflect.Constructor
@@ -45,6 +45,7 @@ object CustomBackgroundOS4 : BaseHook() {
     private const val DI = "com.android.systemui.statusbar.notification.mediaisland."
     private const val NP = "system_ui_control_center_media_control"
     private const val DP = "system_ui_island_media_control"
+    private var foregroundGroups: List<Group> = emptyList()
     private enum class Event { ATTACH, DETACH, BIND, FOREGROUND, AOD, PULL, LAYOUT }
 
     // ROM calls and rollback can throw arbitrary runtime failures; preserve the host and cleanup boundary.
@@ -64,6 +65,7 @@ object CustomBackgroundOS4 : BaseHook() {
             val renderer = checkNotNull(CustomBackgroundRendererOS4.create(loader, styles)) { "OS4 background renderer ABI unavailable" }
             if (notification) groups.add(plan(false, ncStyle, active, renderer))
             if (island) groups.add(plan(true, diStyle, active, renderer))
+            foregroundGroups = groups.toList()
             val shader = MediaSeekBarColorOS4.create(required("miuix.miuixbasewidget.widget.HyperProgressSeekBar"))
             // All selected endpoints preflight before the first registration. A
             // partially installed transaction stays inert, including failed unhooks.
@@ -75,6 +77,7 @@ object CustomBackgroundOS4 : BaseHook() {
             }, { debugCallbackError("custom background shader", it) }))) { "OS4 custom background shader registration failed" })
             registerHotReloadCleanup {
                 active.set(false)
+                foregroundGroups = emptyList()
                 val cleanup = Runnable { cleanAll(groups.map { { it.clear() } }) }
                 if (mainThread()) cleanup.run() else {
                     val finished = CountDownLatch(1)
@@ -89,6 +92,7 @@ object CustomBackgroundOS4 : BaseHook() {
             active.set(true)
         } catch (error: Throwable) {
             active.set(false)
+            foregroundGroups = emptyList()
             for (handle in handles.asReversed()) try { handle.unhook() } catch (rollback: Throwable) { error.addSuppressed(rollback) }
             throw error
         }
@@ -721,14 +725,36 @@ object CustomBackgroundOS4 : BaseHook() {
                 val values = listOf(color.textPrimary, disabled, background, background)
                 group.seekColors.forEachIndexed { i, (field, setter) -> tint(slot, seek, 5 + i, values[i], field, setter) }
             }
-            holder.getAdditionalInstanceFieldAs<SeekBar?>(CustomBackground.KEY_REAL_PROGRESS_BAR)?.let { alternate ->
-                if (alternate.parent != null) {
-                    tint(slot, alternate, 2, primary); tint(slot, alternate, 3, primary)
-                    tint(slot, alternate, 4, ColorStateList.valueOf((color.textPrimary and 0x00ffffff) or (0x33 shl 24)))
+            val colorFromMedia = PrefsBridge.getBoolean(
+                (if (group.island) DP else NP) + "_progress_color_from_media",
+                true
+            )
+            if (colorFromMedia) {
+                holder.getAdditionalInstanceFieldAs<SeekBar?>(CustomBackground.KEY_REAL_PROGRESS_BAR)?.let { alternate ->
+                    if (alternate.parent != null) {
+                        tint(slot, alternate, 2, primary); tint(slot, alternate, 3, primary)
+                        tint(slot, alternate, 4, ColorStateList.valueOf((color.textPrimary and 0x00ffffff) or (0x33 shl 24)))
+                    }
                 }
             }
         }
     }
+    fun seekBarColor(holder: Any): Int? {
+        for (group in foregroundGroups) {
+            for (state in group.states.values.toList()) {
+                val session = state.session ?: continue
+                val owner = session.owner.get() ?: continue
+                if (!current(session, owner)) continue
+                for ((index, slot) in session.slots.withIndex()) {
+                    if (slot.holder.get() === holder) {
+                        return session.frames?.getOrNull(index)?.colors?.textPrimary
+                    }
+                }
+            }
+        }
+        return null
+    }
+
     private fun shaderColor(groups: List<Group>, seek: Any): Int? {
         for (group in groups) {
             for (state in group.states.values.toList()) {

@@ -44,6 +44,11 @@ android {
             buildConfigField("boolean", "STATUS_BAR_FOLLOW_SERVER_AVAILABLE", statusBarFollowServerBuildAvailable.toString())
         }
     }
+    lint {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(25)
+        }
+    }
 }
 
 java {
