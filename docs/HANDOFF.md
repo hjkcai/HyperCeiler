@@ -33,8 +33,11 @@ Provider authority 仍是 `com.hjkcai.HyperCeiler.*`。
 本地改动，与上游 `a0e9cf536` 的 247 行重写是同一功能的两套独立实现。合并采用
 上游版本。本地版本仍在 tag `pre-upstream-merge` 里，随时可取回。
 
-**待验证**：合并后尚未在真机上复测零启停。当前 `localhost:5555` 处于 offline，
-需要手机端重新确认无线调试授权。设备恢复后按本文「验证手法备忘」跑一遍。
+**已验证（2026-11-25 重启后）**：合并后的 `2.11.170-20261125` 安装并重启真机，
+2 分钟内 `am_proc_start` / `am_proc_died` 零次；进程 PID 稳定，30 秒内
+utime/stime 完全不变（39/9 三次采样一致），线程数 21 稳定。同时 hook 日志
+（`HyperCeiler.HomeLayout`、`HomeLayoutEngine`）与 provider 查询均正常，
+证明模块仍在工作，并非因未激活而安静。
 
 ## 一句话背景
 
